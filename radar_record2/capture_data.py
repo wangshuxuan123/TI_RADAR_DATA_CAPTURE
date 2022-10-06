@@ -9,7 +9,7 @@ from Heart import Heart_Record
 from multiprocessing import Value, shared_memory, Process
 from multiprocessing.managers import SharedMemoryManager
 import os
-from plot_process import plot_fig, radar_process
+from plot_process import plot_fig, radar_process, cv_plot
 
 # config
 sample_time = 10 # 采集时间 s
@@ -58,16 +58,16 @@ if __name__ == '__main__':
         heart = Heart_Record(port=heart_port, start_flag=start_flag, stop_flag=stop_flag, save_dir=os.path.join(save_dir, 'heart.npy'))
 
         radar_process = Process(target=radar_process, args=())
-        plot_process = Process(target=plot_fig, args=())
+        plot_process = Process(target=cv_plot, args=(512, 1024, 40))
         radar.process.start()
-        breath.process.start()
-        heart.process.start()
+        # breath.process.start()
+        # heart.process.start()
         radar_process.start()
         plot_process.start()
         # time.sleep(1)
         # flag.value = 1
         radar.process.join()
-        breath.process.join()
-        heart.process.join()
+        # breath.process.join()
+        # heart.process.join()
         radar_process.join()
         plot_process.join()

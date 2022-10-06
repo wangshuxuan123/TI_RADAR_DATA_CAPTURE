@@ -22,6 +22,7 @@ ADC_PARAMS = {'chirps': 16,
               'rx': 4,
               'tx': 2,
               'IQ': 2,
+              'angles': 16,
               'samples': 256,
               'bytes': 2,
               'frames': 200}
@@ -187,7 +188,7 @@ class DCA1000():
 
                         # print('p1', frame_num, frame[0, 0, 0])
                 # print(len(packet_raw_data))
-                    share_frame_buffer[:] = frame
+                    share_frame_buffer[:] = frame / 2**15
                     plot_flag[0] = 1
                 if len(packet_raw_data) != INT16_IN_PACKET:
                     print('雷达耗时', time.time() - start_time)

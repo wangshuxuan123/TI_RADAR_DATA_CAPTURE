@@ -8,6 +8,9 @@ from dsp.utils import Window
 # from dataloader.radar_config import RANGE_RESOLUTION, DOPPLER_RESOLUTION, IDLE_TIME, RAMP_END_TIME, MAX_DOPPLER, MAX_RANGE
 import dsp
 import time
+import cv2
+
+
 def getRawdata(frame_list, flag, flag2, flag3):
     buffer = []
     empty = 0
@@ -61,12 +64,28 @@ def radar_process():
         det_matrix_vis = np.fft.fftshift(det_matrix, axes=-1)
         return det_matrix_vis
 
+    def Range_Azimuth(frame_data, dim=3):
+        radar_cube = dsp.range_processing(frame_data, window_type_1d=Window.HAMMING)
+
+        # Doppler processing
+        # det_matrix, aoa_input = dsp.doppler_processing(radar_cube, num_tx_antennas=ADC_PARAMS['tx'],
+        #                                                clutter_removal_enabled=True,
+        #                                                interleaved=False, window_type_2d=Window.HAMMING,
+        #                                                high_pass=None)
+        # print(aoa_input.shape)
+        # azimuth processing
+        _, range_azimuth_vis = dsp.angle_processing(radar_cube.transpose(2,1,0), fft_size=ADC_PARAMS['angles'], static_remove=False, radar_type='1642')
+        # print(range_azimuth_vis.shape)
+
+        range_azimuth_vis = np.fft.fftshift(range_azimuth_vis, axes=-1)
+        return range_azimuth_vis
+
     # range_doppler
 
     # # 参数
     max_range_bin = 256
     # 共享内存
-    sample = np.zeros((ADC_PARAMS['samples'], ADC_PARAMS['chirps']),
+    sample = np.zeros((ADC_PARAMS['samples'], ADC_PARAMS['angles']),
                       dtype=np.float)
     shm = shared_memory.SharedMemory(name='vis_buffer', create=True, size=sample.nbytes)
     vis_buffer = np.ndarray(sample.shape, dtype=sample.dtype, buffer=shm.buf)
@@ -87,7 +106,7 @@ def radar_process():
     while True:
         raw_frame[:] = frame_buffer_[:]
         # if not ((raw_frame == sample_frames).all()):
-        vis_buffer[:] = Range_Doppler(raw_frame, max_range_bin, dim=3)
+        vis_buffer[:] = Range_Azimuth(raw_frame, dim=3)
         if plot_flag[0] == 2:
             break
 
@@ -96,7 +115,7 @@ def radar_process():
 def plot_fig():
     fig = plt.figure()
     # max_range_bin = int(0.6 // RANGE_RESOLUTION) + 1
-    sample = np.zeros((ADC_PARAMS['samples'], ADC_PARAMS['chirps']),
+    sample = np.zeros((ADC_PARAMS['samples'], ADC_PARAMS['angles']),
                       dtype=np.float)
     vis_frame = sample.copy()
 
@@ -135,9 +154,50 @@ def plot_fig():
             plt.pause(0.001)
             plt.clf()
 
-        if plot_flag[0] == 2:
+        elif plot_flag[0] == 2:
             break
 
+def normalize(map, cv_w=512, cv_h=1024, max_v=40):
+
+    np.where(map >= max_v, max_v, map)
+    map = np.rint((map / max_v) * 255)
+    # map = map[:, :, np.newaxis]
+    map = np.array(map,dtype=np.uint8)
+    map = cv2.resize(map, (cv_w, cv_h), interpolation=cv2.INTER_CUBIC)
+    map = cv2.cvtColor(map, cv2.COLOR_GRAY2BGR)
+    map = cv2.applyColorMap(map, cv2.COLORMAP_JET)
+    # print(map)
+    return map
+
+def cv_plot(cv_w=512, cv_h=1024, max_v=40):
+    sample = np.zeros((ADC_PARAMS['samples'], ADC_PARAMS['angles']),
+                      dtype=np.float)
+    vis_frame = sample.copy()
+    while True:
+        try:
+            existing_shm = shared_memory.SharedMemory(name='vis_buffer')
+            vis_buffer_ = np.ndarray(shape=sample.shape, dtype=sample.dtype, buffer=existing_shm.buf)
+            break
+        except:
+            continue
+    while True:
+        try:
+            plot_flag = shared_memory.ShareableList(name='plot_flag')
+            break
+        except:
+            continue
+    while True:
+        if plot_flag[0] == 1:
+            vis_frame[:] = vis_buffer_[:]
+            # print(vis_frame)
+            vis = normalize(vis_frame, cv_w, cv_h, max_v)
+            cv2.imshow('Range_Angle', vis)
+            if cv2.waitKey(25) & 0xFF == ord('q'):
+                cv2.destroyAllWindows()
+                break
+            time.sleep(0.01)
+        if plot_flag[0] == 2:
+            break
 
 if __name__ == '__main__':
     with SharedMemoryManager() as shm:
